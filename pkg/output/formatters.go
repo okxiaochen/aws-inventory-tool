@@ -197,6 +197,13 @@ func (f *TableFormatter) Format(collection *models.ResourceCollection, filters [
 
 	if len(collection.Summary.ByService) > 0 {
 		fmt.Fprintf(f.writer, "\nBy Service:\n")
+		// Calculate service costs and create sorted list
+		serviceCosts := make([]struct {
+			Service string
+			Count   int
+			Cost    float64
+		}, 0, len(collection.Summary.ByService))
+		
 		for service, count := range collection.Summary.ByService {
 			serviceCost := 0.0
 			for _, resource := range resources {
@@ -206,7 +213,20 @@ func (f *TableFormatter) Format(collection *models.ResourceCollection, filters [
 					}
 				}
 			}
-			fmt.Fprintf(f.writer, "  %s: %d ($%.2f/month)\n", service, count, serviceCost)
+			serviceCosts = append(serviceCosts, struct {
+				Service string
+				Count   int
+				Cost    float64
+			}{service, count, serviceCost})
+		}
+		
+		// Sort by cost (highest first)
+		sort.Slice(serviceCosts, func(i, j int) bool {
+			return serviceCosts[i].Cost > serviceCosts[j].Cost
+		})
+		
+		for _, item := range serviceCosts {
+			fmt.Fprintf(f.writer, "  %s: %d ($%.2f/month)\n", item.Service, item.Count, item.Cost)
 		}
 	}
 
@@ -225,38 +245,7 @@ func (f *TableFormatter) Format(collection *models.ResourceCollection, filters [
 		}
 	}
 
-	// Calculate cost breakdown by resource type
-	typeCosts := make(map[string]float64)
-	for _, resource := range resources {
-		if estimate, exists := costEstimates[resource.ID]; exists && estimate != nil {
-			typeCosts[resource.Type] += estimate.Amount
-		}
-	}
 
-	// Print cost breakdown by resource type
-	fmt.Fprintf(f.writer, "\nCost Breakdown by Resource Type:\n")
-	if len(typeCosts) > 0 {
-		// Sort by cost (highest first)
-		typeCostList := make([]struct {
-			Type  string
-			Cost  float64
-		}, 0, len(typeCosts))
-		for resourceType, cost := range typeCosts {
-			typeCostList = append(typeCostList, struct {
-				Type  string
-				Cost  float64
-			}{resourceType, cost})
-		}
-		sort.Slice(typeCostList, func(i, j int) bool {
-			return typeCostList[i].Cost > typeCostList[j].Cost
-		})
-		
-		for _, item := range typeCostList {
-			fmt.Fprintf(f.writer, "  %s: $%.2f/month\n", item.Type, item.Cost)
-		}
-	} else {
-		fmt.Fprintf(f.writer, "  No resources with cost estimates found\n")
-	}
 
 	// Print errors if any
 	if len(collection.Errors) > 0 {
