@@ -381,47 +381,7 @@ const htmlTemplate = `<!DOCTYPE html>
             opacity: 0.9;
         }
 
-        /* Cost Breakdown by Type Styles */
-        .cost-breakdown-by-type {
-            margin-top: 20px;
-            padding: 20px;
-            background: white;
-            border-radius: 8px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-        }
-        .cost-breakdown-by-type h4 {
-            margin: 0 0 15px 0;
-            color: #495057;
-        }
-        .cost-type-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 15px;
-        }
-        .cost-type-card {
-            background: #f8f9fa;
-            padding: 15px;
-            border-radius: 6px;
-            text-align: center;
-            border-left: 4px solid #28a745;
-        }
-        .cost-type-card .type-name {
-            font-weight: bold;
-            color: #495057;
-            font-size: 1.1em;
-            margin-bottom: 5px;
-        }
-        .cost-type-card .type-amount {
-            font-size: 1.3em;
-            font-weight: bold;
-            color: #28a745;
-            margin-bottom: 5px;
-        }
-        .cost-type-card .type-service {
-            font-size: 0.8em;
-            color: #6c757d;
-            text-transform: uppercase;
-        }
+
         
         /* Collapsible Resources Styles */
         .resources {
@@ -489,6 +449,12 @@ const htmlTemplate = `<!DOCTYPE html>
         .resource-count {
             color: #6c757d;
             font-size: 0.9em;
+        }
+        .service-cost {
+            font-size: 1.1em;
+            font-weight: bold;
+            color: #28a745;
+            margin-left: 15px;
         }
         .group-toggle {
             font-size: 1.2em;
@@ -812,46 +778,7 @@ const htmlTemplate = `<!DOCTYPE html>
                     </div>
                 </div>
 
-                <div class="cost-breakdown-by-type">
-                    <h4>📊 Cost Breakdown by Resource Type</h4>
-                    <div class="cost-type-grid">
-                        {{$typeCosts := makeSlice}}
-                        {{range $.Resources}}
-                            {{if .CostEstimate}}
-                                {{$typeCosts = append $typeCosts (dict "Type" .Type "Amount" .CostEstimate.Amount "Service" .Service)}}
-                            {{end}}
-                        {{end}}
-                        
-                        {{$groupedCosts := makeSlice}}
-                        {{range $typeCosts}}
-                            {{$found := false}}
-                            {{$currentType := .Type}}
-                            {{$currentService := .Service}}
-                            {{range $groupedCosts}}
-                                {{if eq .Type $currentType}}
-                                    {{$found = true}}
-                                {{end}}
-                            {{end}}
-                            {{if not $found}}
-                                {{$total := 0.0}}
-                                {{range $typeCosts}}
-                                    {{if eq .Type $currentType}}
-                                        {{$total = add $total .Amount}}
-                                    {{end}}
-                                {{end}}
-                                {{$groupedCosts = append $groupedCosts (dict "Type" $currentType "Amount" $total "Service" $currentService)}}
-                            {{end}}
-                        {{end}}
-                        
-                        {{range $groupedCosts}}
-                        <div class="cost-type-card">
-                            <div class="type-name">{{.Type}}</div>
-                            <div class="type-amount">${{printf "%.2f" .Amount}}</div>
-                            <div class="type-service">{{.Service}}</div>
-                        </div>
-                        {{end}}
-                    </div>
-                </div>
+
             </div>
             {{end}}
 
@@ -881,13 +808,15 @@ const htmlTemplate = `<!DOCTYPE html>
                 {{$services := makeSlice}}{{range .Resources}}{{$services = append $services .Service}}{{end}}{{$uniqueServices := unique $services}}
                 {{range $service := $uniqueServices}}
                 <div class="resource-group">
-                    <div class="group-header" onclick="toggleGroup('{{$service}}')">
-                        <div class="group-title">
-                            <span class="service-badge service-{{$service}}">{{$service | upper}}</span>
-                            <span class="resource-count">{{$count := 0}}{{range $.Resources}}{{if eq .Service $service}}{{$count = addInt $count 1}}{{end}}{{end}}({{$count}} resources)</span>
-                        </div>
-                        <div class="group-toggle">▼</div>
+                                    <div class="group-header" onclick="toggleGroup('{{$service}}')">
+                    <div class="group-title">
+                        <span class="service-badge service-{{$service}}">{{$service | upper}}</span>
+                        <span class="resource-count">{{$count := 0}}{{range $.Resources}}{{if eq .Service $service}}{{$count = addInt $count 1}}{{end}}{{end}}({{$count}} resources)</span>
+                        {{$serviceCost := 0.0}}{{range $.Resources}}{{if eq .Service $service}}{{if .CostEstimate}}{{$serviceCost = add $serviceCost .CostEstimate.Amount}}{{end}}{{end}}{{end}}
+                        <span class="service-cost">${{printf "%.2f" $serviceCost}}/month</span>
                     </div>
+                    <div class="group-toggle">▼</div>
+                </div>
                     <div class="group-content" id="group-{{$service}}">
                         <div class="resource-table" style="position: relative;">
                             <div class="table-scroll-hint">← Scroll to see more columns →</div>
