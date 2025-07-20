@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/xiaochen/awsinv/pkg/models"
+	"github.com/xiaochen/awsinv/pkg/pricing"
 )
 
 // HTMLFormatter formats output as HTML
@@ -56,6 +57,12 @@ func (f *HTMLFormatter) Format(collection *models.ResourceCollection, filters []
 		"upper": strings.ToUpper,
 		"eq": func(a, b string) bool {
 			return a == b
+		},
+		"gt": func(a, b float64) bool {
+			return a > b
+		},
+		"gtInt": func(a int64, b int64) bool {
+			return a > b
 		},
 		"dict": func(keyvals ...interface{}) map[string]interface{} {
 			if len(keyvals)%2 != 0 {
@@ -154,6 +161,14 @@ func (f *HTMLFormatter) Format(collection *models.ResourceCollection, filters []
 		return sortedServiceCosts[i].Amount > sortedServiceCosts[j].Amount
 	})
 
+	// Get free tier information
+	var freeTierInfo map[string]pricing.FreeTierUsage
+	var freeTierEligible bool
+	if globalPricingService != nil {
+		freeTierInfo = globalPricingService.GetFreeTierInfo()
+		freeTierEligible = globalPricingService.IsFreeTierEligible()
+	}
+
 	// Prepare data for template
 	data := struct {
 		Resources           []ResourceWithCost
@@ -163,6 +178,8 @@ func (f *HTMLFormatter) Format(collection *models.ResourceCollection, filters []
 		GeneratedAt        time.Time
 		RegionsWithResources int
 		SortedServiceCosts []ServiceCost
+		FreeTierInfo       map[string]pricing.FreeTierUsage
+		FreeTierEligible   bool
 	}{
 		Resources:           resourcesWithCost,
 		Summary:            collection.Summary,
@@ -171,6 +188,8 @@ func (f *HTMLFormatter) Format(collection *models.ResourceCollection, filters []
 		GeneratedAt:        time.Now(),
 		RegionsWithResources: regionsWithResources,
 		SortedServiceCosts: sortedServiceCosts,
+		FreeTierInfo:       freeTierInfo,
+		FreeTierEligible:   freeTierEligible,
 	}
 
 	// Execute template
@@ -618,6 +637,64 @@ const htmlTemplate = `<!DOCTYPE html>
             line-height: 1.4;
         }
         
+        /* Free Tier Styles */
+        .free-tier-info {
+            background: linear-gradient(135deg, #e8f5e8, #f0fff0);
+            border: 2px solid #28a745;
+            border-radius: 12px;
+            padding: 25px;
+            margin-bottom: 25px;
+        }
+        .free-tier-info h4 {
+            margin: 0 0 15px 0;
+            color: #155724;
+            font-size: 1.2em;
+        }
+        .free-tier-eligible {
+            color: #155724;
+            font-size: 1.1em;
+            margin: 0 0 20px 0;
+        }
+        .free-tier-not-eligible {
+            color: #721c24;
+            font-size: 1.1em;
+            margin: 0 0 20px 0;
+        }
+        .free-tier-services h5 {
+            margin: 0 0 15px 0;
+            color: #155724;
+            font-size: 1em;
+        }
+        .free-tier-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+        }
+        .free-tier-service {
+            background: white;
+            border: 1px solid #28a745;
+            border-radius: 8px;
+            padding: 15px;
+            text-align: center;
+        }
+        .free-tier-service .service-name {
+            font-weight: bold;
+            color: #155724;
+            font-size: 1em;
+            margin-bottom: 8px;
+        }
+        .free-tier-service .remaining {
+            color: #28a745;
+            font-weight: bold;
+            font-size: 0.95em;
+            margin-bottom: 5px;
+        }
+        .free-tier-service .free-tier-note {
+            color: #6c757d;
+            font-size: 0.85em;
+            font-style: italic;
+        }
+        
         /* Tooltip Styles */
         .cost-tooltip {
             position: fixed;
@@ -851,7 +928,7 @@ const htmlTemplate = `<!DOCTYPE html>
                 </div>
                 <div class="summary-card">
                     <h3>Services</h3>
-                    <div class="value">{{len .Summary.Services}}</div>
+                    <div class="value">{{len .SortedServiceCosts}}</div>
                 </div>
                 <div class="summary-card">
                     <h3>Regions</h3>
@@ -884,6 +961,49 @@ const htmlTemplate = `<!DOCTYPE html>
                         </div>
                     </div>
                 </div>
+
+                <!-- Free Tier Information -->
+                {{if .FreeTierInfo}}
+                <div class="free-tier-info">
+                    <h4>🆓 AWS Free Tier Benefits</h4>
+                    <div class="free-tier-description">
+                        {{if .FreeTierEligible}}
+                        <p class="free-tier-eligible">✅ <strong>Your account is eligible for AWS Free Tier benefits!</strong></p>
+                        {{else}}
+                        <p class="free-tier-not-eligible">❌ <strong>Your account is not eligible for free tier benefits</strong> (account is over 12 months old)</p>
+                        {{end}}
+                    </div>
+                    
+                    {{if .FreeTierEligible}}
+                    <div class="free-tier-services">
+                        <h5>Available Free Tier Services:</h5>
+                        <div class="free-tier-grid">
+                            {{range .FreeTierInfo}}
+                            <div class="free-tier-service">
+                                <div class="service-name">{{.Service | upper}}</div>
+                                {{if gt .RemainingHours 0}}
+                                <div class="remaining">{{printf "%.0f" .RemainingHours}} hours/month</div>
+                                {{end}}
+                                {{if gt .RemainingGB 0}}
+                                <div class="remaining">{{printf "%.0f" .RemainingGB}} GB storage</div>
+                                {{end}}
+                                {{if gtInt .RemainingRequests 0}}
+                                <div class="remaining">{{.RemainingRequests}} requests/month</div>
+                                {{end}}
+                                <div class="free-tier-note">
+                                    {{if eq .Service "ec2"}}Free t2.micro instances{{end}}
+                                    {{if eq .Service "rds"}}Free db.t2.micro instances{{end}}
+                                    {{if eq .Service "lambda"}}Free function executions{{end}}
+                                    {{if eq .Service "s3"}}Free storage & requests{{end}}
+                                    {{if eq .Service "dynamodb"}}Free storage & throughput{{end}}
+                                </div>
+                            </div>
+                            {{end}}
+                        </div>
+                    </div>
+                    {{end}}
+                </div>
+                {{end}}
                 
                 <div class="cost-summary">
                     <div class="total-cost">

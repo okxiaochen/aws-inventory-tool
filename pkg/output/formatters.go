@@ -1,15 +1,18 @@
 package output
 
 import (
+	"context"
 	"encoding/csv"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"sort"
 	"strings"
 	"time"
 
 	"github.com/xiaochen/awsinv/pkg/models"
+	"github.com/xiaochen/awsinv/pkg/pricing"
 )
 
 // CostEstimate represents a cost estimate for a resource
@@ -22,6 +25,24 @@ type CostEstimate struct {
 	Assumptions  []string
 	Examples     []string
 	Accuracy     string // "High", "Medium", "Low" - indicates estimation accuracy
+	FreeTierCovered bool   // Whether this resource is covered by free tier
+	FreeTierSavings float64 // Amount saved by free tier
+	Source       string // "api", "cache", "fallback"
+}
+
+// Global pricing service instance
+var globalPricingService *pricing.PricingService
+
+// InitializePricingService initializes the global pricing service
+func InitializePricingService(ctx context.Context) error {
+	var err error
+	globalPricingService, err = pricing.NewPricingService(ctx)
+	if err != nil {
+		log.Printf("Warning: Failed to initialize pricing service: %v", err)
+		globalPricingService = nil
+		return err
+	}
+	return nil
 }
 
 // Formatter defines the interface for output formatters
@@ -478,17 +499,80 @@ func calculateCostEstimates(resources []models.Resource) map[string]*CostEstimat
 	return costs
 }
 
-// estimateEC2Cost estimates EC2 instance cost (rough monthly estimate)
+// estimateEC2Cost estimates EC2 instance cost using real-time pricing
 func estimateEC2Cost(resource models.Resource) *CostEstimate {
+	// Only charge for running instances
+	if resource.State != "running" {
+		return &CostEstimate{
+			Amount:      0,
+			Explanation: fmt.Sprintf("EC2 %s instance: $0.00/month (not running)", resource.Type),
+			Formula:     "Monthly Cost = $0 (stopped instances)",
+			FormulaExplanation: "Stopped EC2 instances are not charged for compute time.",
+			Breakdown:   make(map[string]float64),
+			Accuracy:    "High",
+			Source:      "state-check",
+		}
+	}
+
+	// Try to get real-time pricing
+	if globalPricingService != nil {
+		ctx := context.Background()
+		result, err := globalPricingService.GetPricing(ctx, "ec2", resource.Region, resource.Type)
+		if err == nil {
+			estimate := &CostEstimate{
+				Amount:      result.MonthlyPrice,
+				Explanation: fmt.Sprintf("EC2 %s instance: $%.2f/month", resource.Type, result.MonthlyPrice),
+				Formula:     "Monthly Cost = Hourly Rate × 730 hours",
+				FormulaExplanation: "AWS charges per hour for running instances. We multiply by 730 hours for monthly cost.",
+				Breakdown:   map[string]float64{resource.Type: result.MonthlyPrice},
+				Accuracy:    result.Accuracy,
+				Source:      result.Source,
+				FreeTierCovered: result.FreeTierCovered,
+				FreeTierSavings: result.FreeTierSavings,
+				Assumptions: []string{
+					fmt.Sprintf("Pricing from %s", result.Source),
+					"Only running instances are charged",
+					"Excludes data transfer, storage, and other costs",
+					"Assumes 24/7 usage (730 hours/month)",
+				},
+				Examples: []string{
+					"t3.micro: $0.0116/hour × 730 hours = $8.47/month",
+					"t3.small: $0.0232/hour × 730 hours = $16.94/month",
+					"m5.large: $0.1184/hour × 730 hours = $86.40/month",
+				},
+			}
+
+			// Update explanation for free tier
+			if result.FreeTierCovered {
+				estimate.Explanation = fmt.Sprintf("EC2 %s instance: $0.00/month (FREE TIER)", resource.Type)
+				estimate.Amount = 0
+				estimate.Assumptions = append(estimate.Assumptions, "FREE TIER: t2.micro instances are free for 750 hours/month during first 12 months")
+			} else if result.FreeTierSavings > 0 {
+				estimate.Explanation = fmt.Sprintf("EC2 %s instance: $%.2f/month (FREE TIER saves $%.2f)", resource.Type, result.MonthlyPrice-result.FreeTierSavings, result.FreeTierSavings)
+				estimate.Amount = result.MonthlyPrice - result.FreeTierSavings
+				estimate.Assumptions = append(estimate.Assumptions, fmt.Sprintf("FREE TIER: Partial coverage saves $%.2f/month", result.FreeTierSavings))
+			}
+
+			return estimate
+		}
+	}
+
+	// Fallback to hardcoded estimates
+	return getFallbackEC2Cost(resource)
+}
+
+// getFallbackEC2Cost provides fallback pricing when API is unavailable
+func getFallbackEC2Cost(resource models.Resource) *CostEstimate {
 	estimate := &CostEstimate{
 		Amount:      0,
 		Explanation: "EC2 costs are based on instance type and running state",
 		Formula:     "Monthly Cost = Hourly Rate × 730 hours",
 		FormulaExplanation: "AWS charges per hour, so we multiply the hourly rate by 730 hours (average hours per month) to get monthly cost.",
 		Breakdown:   make(map[string]float64),
-		Accuracy:    "High",
+		Accuracy:    "Medium",
+		Source:      "fallback",
 		Assumptions: []string{
-			"Based on us-east-1 on-demand pricing",
+			"Based on us-east-1 on-demand pricing (fallback estimates)",
 			"Only running instances are charged",
 			"Excludes data transfer, storage, and other costs",
 			"Assumes 24/7 usage (730 hours/month)",
@@ -498,10 +582,6 @@ func estimateEC2Cost(resource models.Resource) *CostEstimate {
 			"t3.small: $0.0232/hour × 730 hours = $16.94/month",
 			"m5.large: $0.1184/hour × 730 hours = $86.40/month",
 		},
-	}
-
-	if resource.State != "running" {
-		return estimate
 	}
 
 	// Rough cost estimates per month (us-east-1 pricing)
@@ -530,11 +610,82 @@ func estimateEC2Cost(resource models.Resource) *CostEstimate {
 		estimate.Assumptions = append(estimate.Assumptions, "Unknown instance type - using conservative estimate")
 	}
 
+	// Check free tier for fallback
+	if globalPricingService != nil && resource.Type == "t2.micro" && globalPricingService.IsFreeTierEligible() {
+		estimate.FreeTierCovered = true
+		estimate.Amount = 0
+		estimate.Explanation = fmt.Sprintf("EC2 %s instance: $0.00/month (FREE TIER)", resource.Type)
+		estimate.Assumptions = append(estimate.Assumptions, "FREE TIER: t2.micro instances are free for 750 hours/month during first 12 months")
+	}
+
 	return estimate
 }
 
-// estimateRDSCost estimates RDS instance cost (rough monthly estimate)
+// estimateRDSCost estimates RDS instance cost using real-time pricing
 func estimateRDSCost(resource models.Resource) *CostEstimate {
+	// Only charge for available instances
+	if resource.State != "available" {
+		return &CostEstimate{
+			Amount:      0,
+			Explanation: fmt.Sprintf("RDS %s instance: $0.00/month (not available)", resource.Class),
+			Formula:     "Monthly Cost = $0 (stopped instances)",
+			FormulaExplanation: "Stopped RDS instances are not charged for compute time.",
+			Breakdown:   make(map[string]float64),
+			Accuracy:    "High",
+			Source:      "state-check",
+		}
+	}
+
+	// Try to get real-time pricing
+	if globalPricingService != nil {
+		ctx := context.Background()
+		result, err := globalPricingService.GetPricing(ctx, "rds", resource.Region, resource.Class)
+		if err == nil {
+			estimate := &CostEstimate{
+				Amount:      result.MonthlyPrice,
+				Explanation: fmt.Sprintf("RDS %s instance: $%.2f/month", resource.Class, result.MonthlyPrice),
+				Formula:     "Monthly Cost = Hourly Rate × 730 hours",
+				FormulaExplanation: "RDS instances are charged per hour, similar to EC2. We multiply by 730 hours for monthly cost.",
+				Breakdown:   map[string]float64{resource.Class: result.MonthlyPrice},
+				Accuracy:    result.Accuracy,
+				Source:      result.Source,
+				FreeTierCovered: result.FreeTierCovered,
+				FreeTierSavings: result.FreeTierSavings,
+				Assumptions: []string{
+					fmt.Sprintf("Pricing from %s", result.Source),
+					"Only available instances are charged",
+					"Excludes storage, backup, and data transfer costs",
+					"Assumes 24/7 usage (730 hours/month)",
+					"Single-AZ deployment pricing",
+				},
+				Examples: []string{
+					"db.t3.micro: $0.0205/hour × 730 hours = $15.00/month",
+					"db.m5.large: $0.234/hour × 730 hours = $171.00/month",
+					"db.r5.large: $0.312/hour × 730 hours = $228.00/month",
+				},
+			}
+
+			// Update explanation for free tier
+			if result.FreeTierCovered {
+				estimate.Explanation = fmt.Sprintf("RDS %s instance: $0.00/month (FREE TIER)", resource.Class)
+				estimate.Amount = 0
+				estimate.Assumptions = append(estimate.Assumptions, "FREE TIER: db.t2.micro instances are free for 750 hours/month during first 12 months")
+			} else if result.FreeTierSavings > 0 {
+				estimate.Explanation = fmt.Sprintf("RDS %s instance: $%.2f/month (FREE TIER saves $%.2f)", resource.Class, result.MonthlyPrice-result.FreeTierSavings, result.FreeTierSavings)
+				estimate.Amount = result.MonthlyPrice - result.FreeTierSavings
+				estimate.Assumptions = append(estimate.Assumptions, fmt.Sprintf("FREE TIER: Partial coverage saves $%.2f/month", result.FreeTierSavings))
+			}
+
+			return estimate
+		}
+	}
+
+	// Fallback to hardcoded estimates
+	return getFallbackRDSCost(resource)
+}
+
+// getFallbackRDSCost provides fallback pricing when API is unavailable
+func getFallbackRDSCost(resource models.Resource) *CostEstimate {
 	estimate := &CostEstimate{
 		Amount:      0,
 		Explanation: "RDS costs are based on instance class and availability",
