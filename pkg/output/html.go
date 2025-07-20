@@ -456,6 +456,44 @@ const htmlTemplate = `<!DOCTYPE html>
             color: #28a745;
             margin-left: 15px;
         }
+        
+        /* Summary Card Tooltip Styles */
+        .summary-card {
+            position: relative;
+        }
+        .summary-card h3 {
+            cursor: help;
+        }
+        .summary-tooltip {
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #333;
+            color: white;
+            padding: 10px;
+            border-radius: 6px;
+            font-size: 0.85em;
+            max-width: 250px;
+            z-index: 1000;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            display: none;
+            text-align: center;
+            line-height: 1.4;
+            border: 1px solid #555;
+        }
+        .summary-card:hover .summary-tooltip {
+            display: block;
+        }
+        .summary-tooltip::after {
+            content: '';
+            position: absolute;
+            top: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            border: 5px solid transparent;
+            border-top-color: #333;
+        }
         .group-toggle {
             font-size: 1.2em;
             transition: transform 0.2s;
@@ -722,10 +760,16 @@ const htmlTemplate = `<!DOCTYPE html>
                 <div class="summary-card">
                     <h3>Regions</h3>
                     <div class="value">{{len .Summary.Regions}}</div>
+                    <div class="summary-tooltip">
+                        Number of AWS regions where resources were discovered. This shows the geographic distribution of your infrastructure across AWS data centers.
+                    </div>
                 </div>
                 <div class="summary-card">
                     <h3>Duration</h3>
                     <div class="value">{{.Summary.Duration}}</div>
+                    <div class="summary-tooltip">
+                        Total time taken to scan and collect all AWS resources. This includes API calls to AWS services across all regions and services.
+                    </div>
                 </div>
             </div>
 
