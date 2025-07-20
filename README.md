@@ -1,6 +1,6 @@
 # AWS Inventory Tool (awsinv)
 
-A production-quality Go CLI tool for inventorying active AWS resources across regions with minimal external dependencies.
+A Go CLI tool for inventorying active AWS resources across regions with minimal external dependencies.
 
 ## Features
 
@@ -185,27 +185,20 @@ The HTML output generates a beautiful, interactive report with advanced features
 - **Hover tooltips** showing calculation details
 - **Examples and assumptions** for each service type
 
-##### 🖥️ **Screenshot Example**
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│ AWS Resource Inventory - Cost Estimate Report                              │
-├─────────────────────────────────────────────────────────────────────────────┤
-│ 📊 Summary Dashboard                                                      │
-│ Total Resources: 42 | Estimated Monthly Cost: $1,247.89                  │
-│                                                                           │
-│ 🏷️ EC2 Instances (15) - $847.50/month                                    │
-│ ├─ i-1234567890abcdef0 | web-server-01 | t3.micro | running | $8.47     │
-│ ├─ i-0987654321fedcba0 | api-server-01 | t3.small | running | $16.94    │
-│ └─ ... (hover for cost breakdown)                                        │
-│                                                                           │
-│ 🗄️ RDS Databases (8) - $285.00/month                                     │
-│ ├─ db-1234567890 | prod-db | mysql | available | $15.00                 │
-│ └─ ... (hover for cost breakdown)                                        │
-│                                                                           │
-│ ⚡ Lambda Functions (12) - $60.00/month                                   │
-│ └─ ... (hover for cost breakdown)                                        │
-└─────────────────────────────────────────────────────────────────────────────┘
-```
+##### 🖥️ **Screenshot Examples**
+
+**Main Dashboard with Cost Estimates:**
+![AWS Inventory Dashboard](docs/pic1.jpg)
+
+**Interactive Cost Tooltips and Free Tier Information:**
+![Cost Tooltips and Free Tier](docs/pic2.jpg)
+
+The HTML output provides a comprehensive, interactive dashboard with:
+- **Real-time cost estimates** with detailed breakdowns
+- **Free tier benefits** display and eligibility
+- **Interactive tooltips** showing pricing formulas
+- **Collapsible resource groups** for easy navigation
+- **Sortable tables** for better data organization
 
 ##### 🚀 **Usage**
 ```bash
@@ -292,6 +285,49 @@ The HTML output includes detailed cost estimates with explanations for each serv
 - **Calculation**: Node type × 730 hours/month
 - **Examples**: cache.t3.micro ($12.41), cache.t3.small ($24.82), cache.m5.large ($99.28)
 - **Assumptions**: 24/7 usage, excludes data transfer and backup costs
+
+### 🆓 **Free Tier Integration**
+
+The tool now includes comprehensive free tier detection and benefits display:
+
+#### **Free Tier Eligibility**
+- **Account age detection** - Determines if account is within first 12 months
+- **Service-specific benefits** - Tracks remaining free tier usage per service
+- **Automatic cost adjustments** - Reduces estimates based on free tier coverage
+
+#### **Supported Free Tier Services**
+- **EC2**: 750 hours/month for t2.micro instances
+- **RDS**: 750 hours/month for db.t2.micro instances  
+- **Lambda**: 1,000,000 requests/month
+- **S3**: 5 GB storage
+- **DynamoDB**: 25 GB storage and throughput
+
+#### **Free Tier Display**
+The HTML output shows:
+- ✅ **Eligibility status** with clear visual indicators
+- 📊 **Remaining benefits** for each service
+- 💰 **Cost savings** calculations
+- 🎯 **Service-specific** free tier details
+
+### 🚀 **Real-Time Pricing API**
+
+Advanced pricing integration with AWS Pricing API:
+
+#### **API Features**
+- **Real-time pricing** from AWS Pricing API
+- **24-hour caching** to avoid rate limits
+- **Region-specific pricing** with proper location mapping
+- **Graceful fallbacks** when API is unavailable
+
+#### **Pricing Sources**
+- **High Accuracy**: Direct API pricing with source indicator
+- **Medium Accuracy**: Cached pricing (24-hour TTL)
+- **Fallback**: Hardcoded estimates when API unavailable
+
+#### **Cost Estimate Accuracy**
+- **✓ High**: API-based pricing (EC2, RDS, Redis)
+- **~ Medium**: Fallback estimates (Lambda, ECS)
+- **? Low**: Usage-dependent services (S3, DynamoDB, CloudWatch)
 
 ## Resource Model
 
