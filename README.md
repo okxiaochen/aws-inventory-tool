@@ -169,16 +169,75 @@ rds,us-east-1,db-1234567890,prod-db,mysql,available,db.t3.micro,2024-01-10T08:15
 ```
 
 #### HTML Format
-The HTML output generates a beautiful, interactive report with:
-- **Summary dashboard** with resource counts and statistics
-- **Cost estimates** for each service (monthly estimates)
-- **Interactive table** with color-coded service badges
-- **Error reporting** if any collection issues occurred
-- **Responsive design** that works on desktop and mobile
+The HTML output generates a beautiful, interactive report with advanced features:
 
+##### 🎨 **Interactive Features**
+- **Collapsible resource groups** - Click service headers to expand/collapse
+- **Cost tooltips** - Hover over cost cells for detailed breakdowns
+- **Sortable tables** - Click column headers to sort by any field
+- **Responsive design** - Works perfectly on desktop and mobile
+- **Color-coded service badges** - Easy visual identification
+
+##### 📊 **Cost Estimation**
+- **Monthly cost estimates** for all resources
+- **Detailed breakdowns** with formulas and assumptions
+- **Hover tooltips** showing calculation details
+- **Examples and assumptions** for each service type
+
+##### 🖥️ **Screenshot Example**
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ AWS Resource Inventory - Cost Estimate Report                              │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ 📊 Summary Dashboard                                                      │
+│ Total Resources: 42 | Estimated Monthly Cost: $1,247.89                  │
+│                                                                           │
+│ 🏷️ EC2 Instances (15) - $847.50/month                                    │
+│ ├─ i-1234567890abcdef0 | web-server-01 | t3.micro | running | $8.47     │
+│ ├─ i-0987654321fedcba0 | api-server-01 | t3.small | running | $16.94    │
+│ └─ ... (hover for cost breakdown)                                        │
+│                                                                           │
+│ 🗄️ RDS Databases (8) - $285.00/month                                     │
+│ ├─ db-1234567890 | prod-db | mysql | available | $15.00                 │
+│ └─ ... (hover for cost breakdown)                                        │
+│                                                                           │
+│ ⚡ Lambda Functions (12) - $60.00/month                                   │
+│ └─ ... (hover for cost breakdown)                                        │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+##### 🚀 **Usage**
 ```bash
+# Generate HTML report
 ./awsinv --output html > inventory.html
-# Open inventory.html in your browser
+
+# Open in browser
+open inventory.html  # macOS
+xdg-open inventory.html  # Linux
+start inventory.html  # Windows
+```
+
+##### 🎯 **Key Features**
+- **Smart tooltip positioning** - Appears at mouse cursor
+- **Text selection enabled** - Copy cost breakdowns easily
+- **Horizontal scrolling** - Handles wide tables gracefully
+- **Expand/collapse all** - Quick navigation buttons
+- **Error reporting** - Clear display of any collection issues
+
+##### 💡 **Tooltip Example**
+When you hover over a cost cell, you'll see detailed breakdowns like:
+```
+💰 Cost Breakdown
+Formula: t3.micro × 730 hours/month × $0.0116/hour
+Explanation: On-demand pricing for t3.micro instance running 24/7
+📝 Examples:
+  • t3.micro: $8.47/month
+  • t3.small: $16.94/month
+  • m5.large: $86.40/month
+⚠️ Assumptions:
+  • 24/7 usage (730 hours/month)
+  • On-demand pricing
+  • Excludes data transfer costs
 ```
 
 ### Cost Estimation Details
