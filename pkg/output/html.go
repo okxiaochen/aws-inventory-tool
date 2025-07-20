@@ -340,6 +340,47 @@ const htmlTemplate = `<!DOCTYPE html>
             color: #dc3545;
         }
         
+        /* Cost Breakdown by Service Styles */
+        .cost-breakdown-by-service {
+            margin-top: 20px;
+            padding: 20px;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .cost-breakdown-by-service h4 {
+            margin: 0 0 15px 0;
+            color: #495057;
+        }
+        .cost-service-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 15px;
+        }
+        .cost-service-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 8px;
+            text-align: center;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        }
+        .cost-service-card .service-name {
+            font-weight: bold;
+            font-size: 1.2em;
+            margin-bottom: 8px;
+            text-transform: uppercase;
+        }
+        .cost-service-card .service-amount {
+            font-size: 1.8em;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        .cost-service-card .service-count {
+            font-size: 0.9em;
+            opacity: 0.9;
+        }
+
         /* Cost Breakdown by Type Styles */
         .cost-breakdown-by-type {
             margin-top: 20px;
@@ -732,6 +773,45 @@ const htmlTemplate = `<!DOCTYPE html>
                     </div>
                 </div>
                 
+                <div class="cost-breakdown-by-service">
+                    <h4>📊 Cost Breakdown by Service</h4>
+                    <div class="cost-service-grid">
+                        {{$serviceCosts := makeSlice}}
+                        {{range $.Resources}}
+                            {{if .CostEstimate}}
+                                {{$found := false}}
+                                {{$currentService := .Service}}
+                                {{range $serviceCosts}}
+                                    {{if eq .Service $currentService}}
+                                        {{$found = true}}
+                                    {{end}}
+                                {{end}}
+                                {{if not $found}}
+                                    {{$total := 0.0}}
+                                    {{$count := 0}}
+                                    {{range $.Resources}}
+                                        {{if eq .Service $currentService}}
+                                            {{$count = addInt $count 1}}
+                                            {{if .CostEstimate}}
+                                                {{$total = add $total .CostEstimate.Amount}}
+                                            {{end}}
+                                        {{end}}
+                                    {{end}}
+                                    {{$serviceCosts = append $serviceCosts (dict "Service" $currentService "Amount" $total "Count" $count)}}
+                                {{end}}
+                            {{end}}
+                        {{end}}
+                        
+                        {{range $serviceCosts}}
+                        <div class="cost-service-card">
+                            <div class="service-name">{{.Service | upper}}</div>
+                            <div class="service-amount">${{printf "%.2f" .Amount}}</div>
+                            <div class="service-count">{{.Count}} resources</div>
+                        </div>
+                        {{end}}
+                    </div>
+                </div>
+
                 <div class="cost-breakdown-by-type">
                     <h4>📊 Cost Breakdown by Resource Type</h4>
                     <div class="cost-type-grid">
