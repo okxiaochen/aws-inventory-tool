@@ -225,6 +225,39 @@ func (f *TableFormatter) Format(collection *models.ResourceCollection, filters [
 		}
 	}
 
+	// Calculate cost breakdown by resource type
+	typeCosts := make(map[string]float64)
+	for _, resource := range resources {
+		if estimate, exists := costEstimates[resource.ID]; exists && estimate != nil {
+			typeCosts[resource.Type] += estimate.Amount
+		}
+	}
+
+	// Print cost breakdown by resource type
+	fmt.Fprintf(f.writer, "\nCost Breakdown by Resource Type:\n")
+	if len(typeCosts) > 0 {
+		// Sort by cost (highest first)
+		typeCostList := make([]struct {
+			Type  string
+			Cost  float64
+		}, 0, len(typeCosts))
+		for resourceType, cost := range typeCosts {
+			typeCostList = append(typeCostList, struct {
+				Type  string
+				Cost  float64
+			}{resourceType, cost})
+		}
+		sort.Slice(typeCostList, func(i, j int) bool {
+			return typeCostList[i].Cost > typeCostList[j].Cost
+		})
+		
+		for _, item := range typeCostList {
+			fmt.Fprintf(f.writer, "  %s: $%.2f/month\n", item.Type, item.Cost)
+		}
+	} else {
+		fmt.Fprintf(f.writer, "  No resources with cost estimates found\n")
+	}
+
 	// Print errors if any
 	if len(collection.Errors) > 0 {
 		fmt.Fprintf(f.writer, "\nErrors:\n")
@@ -235,7 +268,7 @@ func (f *TableFormatter) Format(collection *models.ResourceCollection, filters [
 
 	// Print resources table
 	if len(resources) > 0 {
-		fmt.Fprintf(f.writer, "\nResources:\n")
+		fmt.Fprintf(f.writer, "\nResources Inventory (Total Cost: $%.2f/month):\n", totalMonthlyCost)
 		fmt.Fprintf(f.writer, "%-12s %-15s %-20s %-15s %-10s %-10s %-10s %-12s\n", "SERVICE", "REGION", "ID", "NAME", "TYPE", "STATE", "CLASS", "MONTHLY COST")
 		fmt.Fprintf(f.writer, "%-12s %-15s %-20s %-15s %-10s %-10s %-10s %-12s\n", "-------", "------", "--", "----", "----", "-----", "-----", "------------")
 
