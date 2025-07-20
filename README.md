@@ -25,6 +25,7 @@ A production-quality Go CLI tool for inventorying active AWS resources across re
 - **Step Functions** - Serverless workflow orchestration
 - **CloudWatch alarms** - Monitoring and alerting
 - **ECS clusters and services** - Container orchestration
+- **Redis (ElastiCache)** - In-memory data store clusters
 
 ## Installation
 
@@ -71,7 +72,7 @@ make install
 
 | Flag | Description | Default |
 |------|-------------|---------|
-| `--services` | Comma-separated list of services (ec2,rds,lambda,s3,dynamodb,sfn,cloudwatch,ecs) | all |
+| `--services` | Comma-separated list of services (ec2,rds,lambda,s3,dynamodb,sfn,cloudwatch,ecs,redis) | all |
 | `--regions` | Comma-separated list of regions | all enabled |
 | `--output` | Output format (table\|json\|csv\|html) | table |
 | `--parallel` | Number of parallel collectors | 12 |
@@ -285,6 +286,12 @@ The HTML output includes detailed cost estimates with explanations for each serv
 - **Basis**: Infrastructure-dependent costs
 - **Calculation**: $5/month per cluster, $15/month per service
 - **Assumptions**: Cluster management overhead, moderate task requirements
+
+#### **Redis (ElastiCache)**
+- **Basis**: On-demand pricing for cache nodes
+- **Calculation**: Node type × 730 hours/month
+- **Examples**: cache.t3.micro ($12.41), cache.t3.small ($24.82), cache.m5.large ($99.28)
+- **Assumptions**: 24/7 usage, excludes data transfer and backup costs
 
 ## Resource Model
 

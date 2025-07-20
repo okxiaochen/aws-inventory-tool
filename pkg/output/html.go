@@ -101,6 +101,8 @@ func (f *HTMLFormatter) Format(collection *models.ResourceCollection, filters []
 			costEstimate = estimateCloudWatchCost(resource)
 		case "ecs":
 			costEstimate = estimateECSCost(resource)
+		case "redis":
+			costEstimate = estimateRedisCost(resource)
 		}
 		
 		resourcesWithCost = append(resourcesWithCost, ResourceWithCost{

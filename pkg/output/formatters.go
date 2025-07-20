@@ -441,6 +441,8 @@ func calculateCostEstimates(resources []models.Resource) map[string]*CostEstimat
 			estimate = estimateCloudWatchCost(resource)
 		case "ecs":
 			estimate = estimateECSCost(resource)
+		case "redis":
+			estimate = estimateRedisCost(resource)
 		default:
 			estimate = &CostEstimate{Amount: 0}
 		}
@@ -724,6 +726,60 @@ func estimateECSCost(resource models.Resource) *CostEstimate {
 	}
 
 	estimate.Breakdown["management"] = estimate.Amount
+
+	return estimate
+}
+
+// estimateRedisCost estimates Redis (ElastiCache) cost (rough monthly estimate)
+func estimateRedisCost(resource models.Resource) *CostEstimate {
+	estimate := &CostEstimate{
+		Amount:      0,
+		Explanation: "Redis costs are based on node type and availability",
+		Formula:     "Monthly Cost = Hourly Rate × 730 hours",
+		FormulaExplanation: "ElastiCache Redis instances are charged per hour, similar to EC2. We multiply the hourly rate by 730 hours for monthly cost.",
+		Breakdown:   make(map[string]float64),
+		Assumptions: []string{
+			"Based on us-east-1 on-demand pricing",
+			"Only available instances are charged",
+			"Excludes data transfer and backup costs",
+			"Assumes 24/7 usage (730 hours/month)",
+			"Single-node deployment pricing",
+		},
+		Examples: []string{
+			"cache.t3.micro: $0.017/hour × 730 hours = $12.41/month",
+			"cache.t3.small: $0.034/hour × 730 hours = $24.82/month",
+			"cache.m5.large: $0.136/hour × 730 hours = $99.28/month",
+		},
+	}
+
+	if resource.State != "available" {
+		return estimate
+	}
+
+	// Rough cost estimates per month (us-east-1 pricing)
+	costMap := map[string]float64{
+		"cache.t3.micro":    12.41,
+		"cache.t3.small":    24.82,
+		"cache.t3.medium":   49.64,
+		"cache.t3.large":    99.28,
+		"cache.m5.large":    99.28,
+		"cache.m5.xlarge":   198.56,
+		"cache.r5.large":    145.60,
+		"cache.r5.xlarge":   291.20,
+		"cache.c5.large":    81.60,
+		"cache.c5.xlarge":   163.20,
+	}
+
+	if cost, exists := costMap[resource.Class]; exists {
+		estimate.Amount = cost
+		estimate.Breakdown[resource.Class] = cost
+		estimate.Explanation = fmt.Sprintf("Redis %s instance: $%.2f/month", resource.Class, cost)
+	} else {
+		estimate.Amount = 50.0
+		estimate.Breakdown["unknown"] = 50.0
+		estimate.Explanation = fmt.Sprintf("Redis %s instance: $50.00/month (estimated for unknown node type)", resource.Class)
+		estimate.Assumptions = append(estimate.Assumptions, "Unknown node type - using conservative estimate")
+	}
 
 	return estimate
 } 

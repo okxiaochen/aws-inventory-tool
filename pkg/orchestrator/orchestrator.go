@@ -42,6 +42,7 @@ func (o *Orchestrator) registerCollectors() {
 	o.collectors["sfn"] = collectors.NewSFNCollector(o.clientManager)
 	o.collectors["cloudwatch"] = collectors.NewCloudWatchCollector(o.clientManager)
 	o.collectors["ecs"] = collectors.NewECSCollector(o.clientManager)
+	o.collectors["redis"] = collectors.NewRedisCollector(o.clientManager)
 }
 
 // GetAvailableServices returns the list of available services
