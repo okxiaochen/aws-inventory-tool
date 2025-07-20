@@ -1,6 +1,7 @@
 package output
 
 import (
+	"fmt"
 	"html/template"
 	"os"
 	"strings"
@@ -26,6 +27,9 @@ func (f *HTMLFormatter) Format(collection *models.ResourceCollection, filters []
 
 	// Sort resources
 	sortResources(resources, sortField)
+
+	// Calculate cost estimates
+	costEstimates := calculateCostEstimates(resources)
 
 	// Create template with custom functions
 	funcMap := template.FuncMap{
@@ -109,9 +113,6 @@ func (f *HTMLFormatter) Format(collection *models.ResourceCollection, filters []
 		})
 	}
 
-	// Calculate cost estimates for summary
-	costEstimates := calculateCostEstimates(resources)
-
 	// Prepare data for template
 	data := struct {
 		Resources     []ResourceWithCost
@@ -132,6 +133,387 @@ func (f *HTMLFormatter) Format(collection *models.ResourceCollection, filters []
 }
 
 // CostEstimate represents a cost estimate with explanation
+type CostEstimate struct {
+	Amount       float64
+	Explanation  string
+	Formula      string
+	FormulaExplanation string
+	Breakdown    map[string]float64
+	Assumptions  []string
+	Examples     []string
+}
+
+// calculateCostEstimates calculates rough cost estimates for resources
+func calculateCostEstimates(resources []models.Resource) map[string]*CostEstimate {
+	costs := make(map[string]*CostEstimate)
+
+	for _, resource := range resources {
+		switch resource.Service {
+		case "ec2":
+			if costs["ec2"] == nil {
+				costs["ec2"] = &CostEstimate{Breakdown: make(map[string]float64), Assumptions: []string{}}
+			}
+			estimate := estimateEC2Cost(resource)
+			costs["ec2"].Amount += estimate.Amount
+			costs["ec2"].Breakdown[resource.ID] = estimate.Amount
+			costs["ec2"].Explanation = estimate.Explanation
+			costs["ec2"].Assumptions = append(costs["ec2"].Assumptions, estimate.Assumptions...)
+		case "rds":
+			if costs["rds"] == nil {
+				costs["rds"] = &CostEstimate{Breakdown: make(map[string]float64), Assumptions: []string{}}
+			}
+			estimate := estimateRDSCost(resource)
+			costs["rds"].Amount += estimate.Amount
+			costs["rds"].Breakdown[resource.ID] = estimate.Amount
+			costs["rds"].Explanation = estimate.Explanation
+			costs["rds"].Assumptions = append(costs["rds"].Assumptions, estimate.Assumptions...)
+		case "lambda":
+			if costs["lambda"] == nil {
+				costs["lambda"] = &CostEstimate{Breakdown: make(map[string]float64), Assumptions: []string{}}
+			}
+			estimate := estimateLambdaCost(resource)
+			costs["lambda"].Amount += estimate.Amount
+			costs["lambda"].Breakdown[resource.ID] = estimate.Amount
+			costs["lambda"].Explanation = estimate.Explanation
+			costs["lambda"].Assumptions = append(costs["lambda"].Assumptions, estimate.Assumptions...)
+		case "s3":
+			if costs["s3"] == nil {
+				costs["s3"] = &CostEstimate{Breakdown: make(map[string]float64), Assumptions: []string{}}
+			}
+			estimate := estimateS3Cost(resource)
+			costs["s3"].Amount += estimate.Amount
+			costs["s3"].Breakdown[resource.ID] = estimate.Amount
+			costs["s3"].Explanation = estimate.Explanation
+			costs["s3"].Assumptions = append(costs["s3"].Assumptions, estimate.Assumptions...)
+		case "dynamodb":
+			if costs["dynamodb"] == nil {
+				costs["dynamodb"] = &CostEstimate{Breakdown: make(map[string]float64), Assumptions: []string{}}
+			}
+			estimate := estimateDynamoDBCost(resource)
+			costs["dynamodb"].Amount += estimate.Amount
+			costs["dynamodb"].Breakdown[resource.ID] = estimate.Amount
+			costs["dynamodb"].Explanation = estimate.Explanation
+			costs["dynamodb"].Assumptions = append(costs["dynamodb"].Assumptions, estimate.Assumptions...)
+		case "sfn":
+			if costs["sfn"] == nil {
+				costs["sfn"] = &CostEstimate{Breakdown: make(map[string]float64), Assumptions: []string{}}
+			}
+			estimate := estimateSFNCost(resource)
+			costs["sfn"].Amount += estimate.Amount
+			costs["sfn"].Breakdown[resource.ID] = estimate.Amount
+			costs["sfn"].Explanation = estimate.Explanation
+			costs["sfn"].Assumptions = append(costs["sfn"].Assumptions, estimate.Assumptions...)
+		case "cloudwatch":
+			if costs["cloudwatch"] == nil {
+				costs["cloudwatch"] = &CostEstimate{Breakdown: make(map[string]float64), Assumptions: []string{}}
+			}
+			estimate := estimateCloudWatchCost(resource)
+			costs["cloudwatch"].Amount += estimate.Amount
+			costs["cloudwatch"].Breakdown[resource.ID] = estimate.Amount
+			costs["cloudwatch"].Explanation = estimate.Explanation
+			costs["cloudwatch"].Assumptions = append(costs["cloudwatch"].Assumptions, estimate.Assumptions...)
+		case "ecs":
+			if costs["ecs"] == nil {
+				costs["ecs"] = &CostEstimate{Breakdown: make(map[string]float64), Assumptions: []string{}}
+			}
+			estimate := estimateECSCost(resource)
+			costs["ecs"].Amount += estimate.Amount
+			costs["ecs"].Breakdown[resource.ID] = estimate.Amount
+			costs["ecs"].Explanation = estimate.Explanation
+			costs["ecs"].Assumptions = append(costs["ecs"].Assumptions, estimate.Assumptions...)
+		}
+	}
+
+	return costs
+}
+
+// estimateEC2Cost estimates EC2 instance cost (rough monthly estimate)
+func estimateEC2Cost(resource models.Resource) *CostEstimate {
+	estimate := &CostEstimate{
+		Amount:      0,
+		Explanation: "EC2 costs are based on instance type and running state",
+		Formula:     "Monthly Cost = Hourly Rate × 730 hours",
+		FormulaExplanation: "AWS charges per hour, so we multiply the hourly rate by 730 hours (average hours per month) to get monthly cost.",
+		Breakdown:   make(map[string]float64),
+		Assumptions: []string{
+			"Based on us-east-1 on-demand pricing",
+			"Only running instances are charged",
+			"Excludes data transfer, storage, and other costs",
+			"Assumes 24/7 usage (730 hours/month)",
+		},
+		Examples: []string{
+			"t3.micro: $0.0116/hour × 730 hours = $8.47/month",
+			"t3.small: $0.0232/hour × 730 hours = $16.94/month",
+			"m5.large: $0.1184/hour × 730 hours = $86.40/month",
+		},
+	}
+
+	if resource.State != "running" {
+		return estimate
+	}
+
+	// Rough cost estimates per month (us-east-1 pricing)
+	costMap := map[string]float64{
+		"t3.micro":     8.47,
+		"t3.small":     16.94,
+		"t3.medium":    33.88,
+		"t3.large":     67.76,
+		"m5.large":     86.40,
+		"m5.xlarge":    172.80,
+		"c5.large":     68.00,
+		"c5.xlarge":    136.00,
+		"r5.large":     126.00,
+		"r5.xlarge":    252.00,
+	}
+
+	if cost, exists := costMap[resource.Type]; exists {
+		estimate.Amount = cost
+		estimate.Breakdown[resource.Type] = cost
+		estimate.Explanation = fmt.Sprintf("EC2 %s instance: $%.2f/month", resource.Type, cost)
+	} else {
+		estimate.Amount = 50.0
+		estimate.Breakdown["unknown"] = 50.0
+		estimate.Explanation = fmt.Sprintf("EC2 %s instance: $50.00/month (estimated for unknown instance type)", resource.Type)
+		estimate.Assumptions = append(estimate.Assumptions, "Unknown instance type - using conservative estimate")
+	}
+
+	return estimate
+}
+
+// estimateRDSCost estimates RDS instance cost (rough monthly estimate)
+func estimateRDSCost(resource models.Resource) *CostEstimate {
+	estimate := &CostEstimate{
+		Amount:      0,
+		Explanation: "RDS costs are based on instance class and availability",
+		Formula:     "Monthly Cost = Hourly Rate × 730 hours",
+		FormulaExplanation: "RDS instances are charged per hour, similar to EC2. We multiply the hourly rate by 730 hours for monthly cost.",
+		Breakdown:   make(map[string]float64),
+		Assumptions: []string{
+			"Based on us-east-1 on-demand pricing",
+			"Only available instances are charged",
+			"Excludes storage, backup, and data transfer costs",
+			"Assumes 24/7 usage (730 hours/month)",
+			"Single-AZ deployment pricing",
+		},
+		Examples: []string{
+			"db.t3.micro: $0.0205/hour × 730 hours = $15.00/month",
+			"db.m5.large: $0.234/hour × 730 hours = $171.00/month",
+			"db.r5.large: $0.312/hour × 730 hours = $228.00/month",
+		},
+	}
+
+	if resource.State != "available" {
+		return estimate
+	}
+
+	// Rough cost estimates per month (us-east-1 pricing)
+	costMap := map[string]float64{
+		"db.t3.micro":    15.00,
+		"db.t3.small":    30.00,
+		"db.t3.medium":   60.00,
+		"db.t3.large":    120.00,
+		"db.m5.large":    171.00,
+		"db.m5.xlarge":   342.00,
+		"db.r5.large":    228.00,
+		"db.r5.xlarge":   456.00,
+	}
+
+	if cost, exists := costMap[resource.Class]; exists {
+		estimate.Amount = cost
+		estimate.Breakdown[resource.Class] = cost
+		estimate.Explanation = fmt.Sprintf("RDS %s instance: $%.2f/month", resource.Class, cost)
+	} else {
+		estimate.Amount = 100.0
+		estimate.Breakdown["unknown"] = 100.0
+		estimate.Explanation = fmt.Sprintf("RDS %s instance: $100.00/month (estimated for unknown instance class)", resource.Class)
+		estimate.Assumptions = append(estimate.Assumptions, "Unknown instance class - using conservative estimate")
+	}
+
+	return estimate
+}
+
+// estimateLambdaCost estimates Lambda function cost (rough monthly estimate)
+func estimateLambdaCost(resource models.Resource) *CostEstimate {
+	estimate := &CostEstimate{
+		Amount:      5.0,
+		Explanation: "Lambda costs are based on requests, duration, and memory",
+		Formula:     "Monthly Cost = (Requests × $0.20/million) + (Duration × Memory × $0.0000166667/GB-second)",
+		FormulaExplanation: "Lambda charges per request ($0.20 per million requests) plus compute time based on memory allocation and execution duration.",
+		Breakdown:   make(map[string]float64),
+		Assumptions: []string{
+			"Estimated $5/month per function",
+			"Assumes moderate usage (1000 requests/month)",
+			"Assumes 128MB memory allocation",
+			"Assumes 100ms average execution time",
+			"Excludes data transfer and other costs",
+		},
+		Examples: []string{
+			"1000 requests: 1000 × $0.20/1,000,000 = $0.20",
+			"Compute time: 1000 × 0.1s × 0.128GB × $0.0000166667 = $0.21",
+			"Total: $0.20 + $0.21 = $0.41 (estimated $5 for overhead)",
+		},
+	}
+
+	estimate.Breakdown["requests"] = 2.0
+	estimate.Breakdown["duration"] = 3.0
+	estimate.Explanation = fmt.Sprintf("Lambda function %s: $5.00/month", resource.Name)
+
+	return estimate
+}
+
+// estimateS3Cost estimates S3 bucket cost (rough monthly estimate)
+func estimateS3Cost(resource models.Resource) *CostEstimate {
+	estimate := &CostEstimate{
+		Amount:      1.0,
+		Explanation: "S3 costs are based on storage, requests, and data transfer",
+		Formula:     "Monthly Cost = (Storage × $0.023/GB) + (Requests × $0.0004/1000) + Data Transfer",
+		FormulaExplanation: "S3 charges for storage per GB, requests per 1000 operations, and data transfer out of AWS.",
+		Breakdown:   make(map[string]float64),
+		Assumptions: []string{
+			"Estimated $1/month per bucket",
+			"Assumes minimal storage (1GB)",
+			"Assumes standard storage class",
+			"Assumes low request volume",
+			"Excludes data transfer and other costs",
+		},
+		Examples: []string{
+			"Storage: 1GB × $0.023/GB = $0.023",
+			"Requests: 1000 × $0.0004/1000 = $0.40",
+			"Total: $0.023 + $0.40 = $0.42 (estimated $1 for overhead)",
+		},
+	}
+
+	estimate.Breakdown["storage"] = 0.5
+	estimate.Breakdown["requests"] = 0.5
+	estimate.Explanation = fmt.Sprintf("S3 bucket %s: $1.00/month", resource.Name)
+
+	return estimate
+}
+
+// estimateDynamoDBCost estimates DynamoDB table cost (rough monthly estimate)
+func estimateDynamoDBCost(resource models.Resource) *CostEstimate {
+	estimate := &CostEstimate{
+		Amount:      10.0,
+		Explanation: "DynamoDB costs are based on read/write capacity and storage",
+		Formula:     "Monthly Cost = (Read Units × $0.25/unit) + (Write Units × $1.25/unit) + (Storage × $0.25/GB)",
+		FormulaExplanation: "DynamoDB charges for read capacity units, write capacity units, and storage per GB.",
+		Breakdown:   make(map[string]float64),
+		Assumptions: []string{
+			"Estimated $10/month per table",
+			"Assumes on-demand billing mode",
+			"Assumes moderate read/write capacity",
+			"Assumes minimal storage (1GB)",
+			"Excludes data transfer and other costs",
+		},
+		Examples: []string{
+			"Read capacity: 10 units × $0.25 = $2.50",
+			"Write capacity: 5 units × $1.25 = $6.25",
+			"Storage: 1GB × $0.25/GB = $0.25",
+			"Total: $2.50 + $6.25 + $0.25 = $9.00 (estimated $10)",
+		},
+	}
+
+	estimate.Breakdown["read_capacity"] = 4.0
+	estimate.Breakdown["write_capacity"] = 4.0
+	estimate.Breakdown["storage"] = 2.0
+	estimate.Explanation = fmt.Sprintf("DynamoDB table %s: $10.00/month", resource.Name)
+
+	return estimate
+}
+
+// estimateSFNCost estimates Step Functions cost (rough monthly estimate)
+func estimateSFNCost(resource models.Resource) *CostEstimate {
+	estimate := &CostEstimate{
+		Amount:      5.0,
+		Explanation: "Step Functions costs are based on state transitions and execution time",
+		Formula:     "Monthly Cost = (State Transitions × $0.025/1000) + (Duration × $0.00001/second)",
+		FormulaExplanation: "Step Functions charges per 1000 state transitions and per second of execution time.",
+		Breakdown:   make(map[string]float64),
+		Assumptions: []string{
+			"Estimated $5/month per state machine",
+			"Assumes moderate execution frequency",
+			"Assumes standard workflow complexity",
+			"Excludes Lambda and other service costs",
+		},
+		Examples: []string{
+			"State transitions: 1000 × $0.025/1000 = $0.025",
+			"Execution time: 1000s × $0.00001/s = $0.01",
+			"Total: $0.025 + $0.01 = $0.035 (estimated $5 for overhead)",
+		},
+	}
+
+	estimate.Breakdown["transitions"] = 3.0
+	estimate.Breakdown["execution"] = 2.0
+	estimate.Explanation = fmt.Sprintf("Step Functions %s: $5.00/month", resource.Name)
+
+	return estimate
+}
+
+// estimateCloudWatchCost estimates CloudWatch cost (rough monthly estimate)
+func estimateCloudWatchCost(resource models.Resource) *CostEstimate {
+	estimate := &CostEstimate{
+		Amount:      2.0,
+		Explanation: "CloudWatch costs are based on metrics, logs, and alarms",
+		Formula:     "Monthly Cost = (Metrics × $0.30/metric) + (Alarms × $0.50/alarm) + Log Storage",
+		FormulaExplanation: "CloudWatch charges for custom metrics, alarms, and log storage. Basic metrics are free.",
+		Breakdown:   make(map[string]float64),
+		Assumptions: []string{
+			"Estimated $2/month per alarm",
+			"Assumes standard resolution metrics",
+			"Assumes moderate metric volume",
+			"Excludes log storage and other costs",
+		},
+		Examples: []string{
+			"Custom metrics: 5 × $0.30 = $1.50",
+			"Alarm: 1 × $0.50 = $0.50",
+			"Total: $1.50 + $0.50 = $2.00",
+		},
+	}
+
+	estimate.Breakdown["metrics"] = 1.0
+	estimate.Breakdown["alarms"] = 1.0
+	estimate.Explanation = fmt.Sprintf("CloudWatch alarm %s: $2.00/month", resource.Name)
+
+	return estimate
+}
+
+// estimateECSCost estimates ECS cost (rough monthly estimate)
+func estimateECSCost(resource models.Resource) *CostEstimate {
+	estimate := &CostEstimate{
+		Amount:      0,
+		Explanation: "ECS costs depend on underlying infrastructure and task definitions",
+		Formula:     "Monthly Cost = (Fargate vCPU × $0.04048/hour) + (Fargate Memory × $0.004445/GB-hour) + EC2 Costs",
+		FormulaExplanation: "ECS charges depend on whether you use Fargate (serverless) or EC2 instances. Fargate charges per vCPU and memory.",
+		Breakdown:   make(map[string]float64),
+		Assumptions: []string{
+			"Costs are primarily from underlying EC2 instances or Fargate",
+			"Cluster management is free",
+			"Service costs depend on task definitions",
+			"Excludes data transfer and other costs",
+		},
+		Examples: []string{
+			"Fargate: 0.5 vCPU × $0.04048 × 730 hours = $14.78",
+			"Memory: 1GB × $0.004445 × 730 hours = $3.24",
+			"Total: $14.78 + $3.24 = $18.02 (estimated $15)",
+		},
+	}
+
+	// ECS costs are primarily from the underlying infrastructure
+	// For clusters, we estimate minimal overhead
+	// For services, we estimate based on typical task requirements
+	if resource.Type == "cluster" {
+		estimate.Amount = 5.0
+		estimate.Breakdown["management"] = 5.0
+		estimate.Explanation = fmt.Sprintf("ECS cluster %s: $5.00/month", resource.Name)
+	} else if resource.Type == "service" {
+		estimate.Amount = 15.0
+		estimate.Breakdown["tasks"] = 15.0
+		estimate.Explanation = fmt.Sprintf("ECS service %s: $15.00/month", resource.Name)
+		estimate.Assumptions = append(estimate.Assumptions, "Assumes moderate task requirements (0.5 vCPU, 1GB RAM)")
+	}
+
+	return estimate
+}
 
 // HTML template for the inventory report
 const htmlTemplate = `<!DOCTYPE html>
