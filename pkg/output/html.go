@@ -114,19 +114,28 @@ func (f *HTMLFormatter) Format(collection *models.ResourceCollection, filters []
 	// Calculate cost estimates for summary
 	costEstimates := calculateCostEstimates(resources)
 
+	// Calculate unique regions with resources
+	uniqueRegions := make(map[string]bool)
+	for _, resource := range resources {
+		uniqueRegions[resource.Region] = true
+	}
+	regionsWithResources := len(uniqueRegions)
+
 	// Prepare data for template
 	data := struct {
-		Resources     []ResourceWithCost
-		Summary       models.Summary
-		Errors        []string
-		CostEstimates map[string]*CostEstimate
-		GeneratedAt   time.Time
+		Resources           []ResourceWithCost
+		Summary            models.Summary
+		Errors             []string
+		CostEstimates      map[string]*CostEstimate
+		GeneratedAt        time.Time
+		RegionsWithResources int
 	}{
-		Resources:     resourcesWithCost,
-		Summary:       collection.Summary,
-		Errors:        collection.Errors,
-		CostEstimates: costEstimates,
-		GeneratedAt:   time.Now(),
+		Resources:           resourcesWithCost,
+		Summary:            collection.Summary,
+		Errors:             collection.Errors,
+		CostEstimates:      costEstimates,
+		GeneratedAt:        time.Now(),
+		RegionsWithResources: regionsWithResources,
 	}
 
 	// Execute template
@@ -759,16 +768,9 @@ const htmlTemplate = `<!DOCTYPE html>
                 </div>
                 <div class="summary-card">
                     <h3>Regions</h3>
-                    <div class="value">{{len .Summary.Regions}}</div>
+                    <div class="value">{{.RegionsWithResources}}</div>
                     <div class="summary-tooltip">
                         Number of AWS regions where resources were discovered. This shows the geographic distribution of your infrastructure across AWS data centers.
-                    </div>
-                </div>
-                <div class="summary-card">
-                    <h3>Duration</h3>
-                    <div class="value">{{.Summary.Duration}}</div>
-                    <div class="summary-tooltip">
-                        Total time taken to scan and collect all AWS resources. This includes API calls to AWS services across all regions and services.
                     </div>
                 </div>
             </div>
