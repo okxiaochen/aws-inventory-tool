@@ -3,6 +3,7 @@ package output
 import (
 	"html/template"
 	"os"
+	"sort"
 	"strings"
 	"time"
 
@@ -121,6 +122,38 @@ func (f *HTMLFormatter) Format(collection *models.ResourceCollection, filters []
 	}
 	regionsWithResources := len(uniqueRegions)
 
+	// Calculate service costs and sort by amount (highest to lowest)
+	serviceCosts := make(map[string]float64)
+	serviceCounts := make(map[string]int)
+	
+	for _, resource := range resourcesWithCost {
+		if resource.CostEstimate != nil {
+			serviceCosts[resource.Service] += resource.CostEstimate.Amount
+			serviceCounts[resource.Service]++
+		}
+	}
+	
+	// Create sorted service cost list
+	type ServiceCost struct {
+		Service string
+		Amount  float64
+		Count   int
+	}
+	
+	var sortedServiceCosts []ServiceCost
+	for service, amount := range serviceCosts {
+		sortedServiceCosts = append(sortedServiceCosts, ServiceCost{
+			Service: service,
+			Amount:  amount,
+			Count:   serviceCounts[service],
+		})
+	}
+	
+	// Sort by amount (highest to lowest)
+	sort.Slice(sortedServiceCosts, func(i, j int) bool {
+		return sortedServiceCosts[i].Amount > sortedServiceCosts[j].Amount
+	})
+
 	// Prepare data for template
 	data := struct {
 		Resources           []ResourceWithCost
@@ -129,6 +162,7 @@ func (f *HTMLFormatter) Format(collection *models.ResourceCollection, filters []
 		CostEstimates      map[string]*CostEstimate
 		GeneratedAt        time.Time
 		RegionsWithResources int
+		SortedServiceCosts []ServiceCost
 	}{
 		Resources:           resourcesWithCost,
 		Summary:            collection.Summary,
@@ -136,6 +170,7 @@ func (f *HTMLFormatter) Format(collection *models.ResourceCollection, filters []
 		CostEstimates:      costEstimates,
 		GeneratedAt:        time.Now(),
 		RegionsWithResources: regionsWithResources,
+		SortedServiceCosts: sortedServiceCosts,
 	}
 
 	// Execute template
@@ -389,6 +424,10 @@ const htmlTemplate = `<!DOCTYPE html>
             font-size: 0.9em;
             opacity: 0.9;
         }
+        .cost-service-card .service-accuracy {
+            margin-top: 8px;
+            text-align: center;
+        }
 
 
         
@@ -529,6 +568,54 @@ const htmlTemplate = `<!DOCTYPE html>
         }
         .cost-cell:hover {
             text-decoration: underline;
+        }
+        .accuracy-badge {
+            font-size: 0.8em;
+            margin-left: 4px;
+            padding: 1px 3px;
+            border-radius: 2px;
+            font-weight: bold;
+        }
+        .accuracy-high {
+            background: #d4edda;
+            color: #155724;
+        }
+        .accuracy-medium {
+            background: #fff3cd;
+            color: #856404;
+        }
+        .accuracy-low {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        
+        /* Accuracy Legend Styles */
+        .accuracy-legend {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 25px;
+        }
+        .accuracy-legend h4 {
+            margin: 0 0 15px 0;
+            color: #495057;
+            font-size: 1.1em;
+        }
+        .legend-items {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .legend-text {
+            font-size: 0.95em;
+            color: #495057;
+            line-height: 1.4;
         }
         
         /* Tooltip Styles */
@@ -778,6 +865,26 @@ const htmlTemplate = `<!DOCTYPE html>
             {{if .CostEstimates}}
             <div class="cost-estimates">
                 <h3>💰 Cost Analysis & Estimates</h3>
+                
+                <!-- Accuracy Legend -->
+                <div class="accuracy-legend">
+                    <h4>📊 Estimate Accuracy Guide</h4>
+                    <div class="legend-items">
+                        <div class="legend-item">
+                            <span class="accuracy-badge accuracy-high">✓</span>
+                            <span class="legend-text"><strong>High Accuracy:</strong> Based on hourly billing with known pricing (EC2, RDS, Redis)</span>
+                        </div>
+                        <div class="legend-item">
+                            <span class="accuracy-badge accuracy-medium">~</span>
+                            <span class="legend-text"><strong>Medium Accuracy:</strong> Complex pricing but estimable (Lambda, ECS)</span>
+                        </div>
+                        <div class="legend-item">
+                            <span class="accuracy-badge accuracy-low">?</span>
+                            <span class="legend-text"><strong>Low Accuracy:</strong> Usage-dependent pricing (S3, DynamoDB, CloudWatch)</span>
+                        </div>
+                    </div>
+                </div>
+                
                 <div class="cost-summary">
                     <div class="total-cost">
                         <span class="label">Total Estimated Monthly Cost:</span>
@@ -788,37 +895,22 @@ const htmlTemplate = `<!DOCTYPE html>
                 <div class="cost-breakdown-by-service">
                     <h4>📊 Cost Breakdown by Service</h4>
                     <div class="cost-service-grid">
-                        {{$serviceCosts := makeSlice}}
-                        {{range $.Resources}}
-                            {{if .CostEstimate}}
-                                {{$found := false}}
-                                {{$currentService := .Service}}
-                                {{range $serviceCosts}}
-                                    {{if eq .Service $currentService}}
-                                        {{$found = true}}
-                                    {{end}}
-                                {{end}}
-                                {{if not $found}}
-                                    {{$total := 0.0}}
-                                    {{$count := 0}}
-                                    {{range $.Resources}}
-                                        {{if eq .Service $currentService}}
-                                            {{$count = addInt $count 1}}
-                                            {{if .CostEstimate}}
-                                                {{$total = add $total .CostEstimate.Amount}}
-                                            {{end}}
-                                        {{end}}
-                                    {{end}}
-                                    {{$serviceCosts = append $serviceCosts (dict "Service" $currentService "Amount" $total "Count" $count)}}
-                                {{end}}
-                            {{end}}
-                        {{end}}
-                        
-                        {{range $serviceCosts}}
+                        {{range .SortedServiceCosts}}
                         <div class="cost-service-card">
                             <div class="service-name">{{.Service | upper}}</div>
                             <div class="service-amount">${{printf "%.2f" .Amount}}</div>
                             <div class="service-count">{{.Count}} resources</div>
+                            {{$accuracy := "Low"}}
+                            {{if eq .Service "ec2"}}{{$accuracy = "High"}}{{else if eq .Service "rds"}}{{$accuracy = "High"}}{{else if eq .Service "redis"}}{{$accuracy = "High"}}{{else if eq .Service "lambda"}}{{$accuracy = "Medium"}}{{else if eq .Service "ecs"}}{{$accuracy = "Medium"}}{{else}}{{$accuracy = "Low"}}{{end}}
+                            <div class="service-accuracy">
+                                {{if eq $accuracy "High"}}
+                                <span class="accuracy-badge accuracy-high" title="High accuracy estimate - Based on hourly billing with known pricing (EC2, RDS, Redis)">✓</span>
+                                {{else if eq $accuracy "Medium"}}
+                                <span class="accuracy-badge accuracy-medium" title="Medium accuracy estimate - Complex pricing but estimable (Lambda, ECS)">~</span>
+                                {{else}}
+                                <span class="accuracy-badge accuracy-low" title="Low accuracy estimate - Usage-dependent pricing (S3, DynamoDB, CloudWatch)">?</span>
+                                {{end}}
+                            </div>
                         </div>
                         {{end}}
                     </div>
@@ -898,6 +990,13 @@ const htmlTemplate = `<!DOCTYPE html>
                                                   data-examples="{{range .CostEstimate.Examples}}{{.}}|{{end}}"
                                                   data-assumptions="{{range .CostEstimate.Assumptions}}{{.}}|{{end}}">
                                                 ${{printf "%.2f" .CostEstimate.Amount}}
+                                                {{if eq .CostEstimate.Accuracy "High"}}
+                                                <span class="accuracy-badge accuracy-high" title="High accuracy estimate - Based on hourly billing with known pricing (EC2, RDS, Redis)">✓</span>
+                                                {{else if eq .CostEstimate.Accuracy "Medium"}}
+                                                <span class="accuracy-badge accuracy-medium" title="Medium accuracy estimate - Complex pricing but estimable (Lambda, ECS)">~</span>
+                                                {{else if eq .CostEstimate.Accuracy "Low"}}
+                                                <span class="accuracy-badge accuracy-low" title="Low accuracy estimate - Usage-dependent pricing (S3, DynamoDB, CloudWatch)">?</span>
+                                                {{end}}
                                             </span>
                                             {{else}}
                                             -

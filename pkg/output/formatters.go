@@ -21,6 +21,7 @@ type CostEstimate struct {
 	Breakdown    map[string]float64
 	Assumptions  []string
 	Examples     []string
+	Accuracy     string // "High", "Medium", "Low" - indicates estimation accuracy
 }
 
 // Formatter defines the interface for output formatters
@@ -485,6 +486,7 @@ func estimateEC2Cost(resource models.Resource) *CostEstimate {
 		Formula:     "Monthly Cost = Hourly Rate × 730 hours",
 		FormulaExplanation: "AWS charges per hour, so we multiply the hourly rate by 730 hours (average hours per month) to get monthly cost.",
 		Breakdown:   make(map[string]float64),
+		Accuracy:    "High",
 		Assumptions: []string{
 			"Based on us-east-1 on-demand pricing",
 			"Only running instances are charged",
@@ -538,6 +540,7 @@ func estimateRDSCost(resource models.Resource) *CostEstimate {
 		Formula:     "Monthly Cost = Hourly Rate × 730 hours",
 		FormulaExplanation: "RDS instances are charged per hour, similar to EC2. We multiply the hourly rate by 730 hours for monthly cost.",
 		Breakdown:   make(map[string]float64),
+		Accuracy:    "High",
 		Assumptions: []string{
 			"Based on us-east-1 on-demand pricing",
 			"Only available instances are charged",
@@ -590,6 +593,7 @@ func estimateLambdaCost(resource models.Resource) *CostEstimate {
 		Formula:     "Monthly Cost = $5.00 (estimated moderate usage)",
 		FormulaExplanation: "Lambda pricing is complex (requests + duration + memory). Using conservative estimate for moderate usage.",
 		Breakdown:   make(map[string]float64),
+		Accuracy:    "Medium",
 		Assumptions: []string{
 			"Estimated moderate usage (1000 requests/month)",
 			"128MB memory allocation",
@@ -617,6 +621,7 @@ func estimateS3Cost(resource models.Resource) *CostEstimate {
 		Formula:     "Monthly Cost = $1.00 (estimated minimal usage)",
 		FormulaExplanation: "S3 pricing includes storage, requests, and data transfer. Using conservative estimate for minimal usage.",
 		Breakdown:   make(map[string]float64),
+		Accuracy:    "Low",
 		Assumptions: []string{
 			"Estimated minimal usage (1GB storage)",
 			"Standard storage class",
@@ -644,6 +649,7 @@ func estimateDynamoDBCost(resource models.Resource) *CostEstimate {
 		Formula:     "Monthly Cost = $10.00 (estimated moderate usage)",
 		FormulaExplanation: "DynamoDB pricing includes read/write capacity units and storage. Using conservative estimate for moderate usage.",
 		Breakdown:   make(map[string]float64),
+		Accuracy:    "Low",
 		Assumptions: []string{
 			"Estimated moderate read/write capacity",
 			"On-demand billing mode",
@@ -670,6 +676,7 @@ func estimateSFNCost(resource models.Resource) *CostEstimate {
 		Formula:     "Monthly Cost = $5.00 (estimated moderate usage)",
 		FormulaExplanation: "Step Functions pricing is based on state transitions and execution time. Using conservative estimate for moderate usage.",
 		Breakdown:   make(map[string]float64),
+		Accuracy:    "Low",
 		Assumptions: []string{
 			"Estimated moderate workflow complexity",
 			"Standard workflow execution",
@@ -696,6 +703,7 @@ func estimateCloudWatchCost(resource models.Resource) *CostEstimate {
 		Formula:     "Monthly Cost = $2.00 (estimated moderate usage)",
 		FormulaExplanation: "CloudWatch pricing includes metrics, logs, and alarms. Using conservative estimate for moderate usage.",
 		Breakdown:   make(map[string]float64),
+		Accuracy:    "Low",
 		Assumptions: []string{
 			"Estimated moderate metric resolution",
 			"Standard resolution metrics",
@@ -722,6 +730,7 @@ func estimateECSCost(resource models.Resource) *CostEstimate {
 		Formula:     "Monthly Cost = Infrastructure costs + ECS management",
 		FormulaExplanation: "ECS itself is free, but you pay for the underlying infrastructure (EC2 instances or Fargate tasks) plus ECS management overhead.",
 		Breakdown:   make(map[string]float64),
+		Accuracy:    "Medium",
 		Assumptions: []string{
 			"ECS service management overhead",
 			"Infrastructure costs handled separately",
@@ -760,6 +769,7 @@ func estimateRedisCost(resource models.Resource) *CostEstimate {
 		Formula:     "Monthly Cost = Hourly Rate × 730 hours",
 		FormulaExplanation: "ElastiCache Redis instances are charged per hour, similar to EC2. We multiply the hourly rate by 730 hours for monthly cost.",
 		Breakdown:   make(map[string]float64),
+		Accuracy:    "High",
 		Assumptions: []string{
 			"Based on us-east-1 on-demand pricing",
 			"Only available instances are charged",
