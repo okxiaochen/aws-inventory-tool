@@ -508,6 +508,7 @@ func estimateEC2Cost(resource models.Resource) *CostEstimate {
 	costMap := map[string]float64{
 		"t3.micro":     8.47,
 		"t3.small":     16.94,
+		"t3a.medium":   27.07,
 		"t3.medium":    33.88,
 		"t3.large":     67.76,
 		"m5.large":     86.40,
