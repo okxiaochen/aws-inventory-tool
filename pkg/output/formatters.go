@@ -487,6 +487,8 @@ func calculateCostEstimates(resources []models.Resource) map[string]*CostEstimat
 			estimate = estimateECSCost(resource)
 		case "redis":
 			estimate = estimateRedisCost(resource)
+		case "efs":
+			estimate = estimateEFSCost(resource)
 		default:
 			estimate = &CostEstimate{Amount: 0}
 		}
@@ -963,6 +965,80 @@ func estimateRedisCost(resource models.Resource) *CostEstimate {
 		estimate.Breakdown["unknown"] = 50.0
 		estimate.Explanation = fmt.Sprintf("Redis %s instance: $50.00/month (estimated for unknown node type)", resource.Class)
 		estimate.Assumptions = append(estimate.Assumptions, "Unknown node type - using conservative estimate")
+	}
+
+	return estimate
+}
+
+// estimateEFSCost estimates EFS file system cost (rough monthly estimate)
+func estimateEFSCost(resource models.Resource) *CostEstimate {
+	estimate := &CostEstimate{
+		Amount:      0,
+		Explanation: "EFS costs are based on storage usage and throughput mode",
+		Formula:     "Monthly Cost = Storage × $0.30/GB + Throughput costs",
+		FormulaExplanation: "EFS pricing includes storage costs ($0.30/GB/month) plus throughput costs based on mode (Provisioned or Bursting).",
+		Breakdown:   make(map[string]float64),
+		Accuracy:    "Medium",
+		Source:      "fallback",
+		Assumptions: []string{
+			"Based on us-east-1 pricing",
+			"Standard storage class",
+			"Estimated storage usage",
+			"Conservative throughput estimate",
+		},
+		Examples: []string{
+			"Small file system (10GB): $3.00/month",
+			"Medium file system (100GB): $30.00/month",
+			"Large file system (1TB): $300.00/month",
+		},
+	}
+
+	// Only charge for available file systems
+	if resource.State != "available" {
+		estimate.Explanation = fmt.Sprintf("EFS %s: $0.00/month (not available)", resource.Name)
+		estimate.Source = "state-check"
+		return estimate
+	}
+
+	// Estimate storage size based on extra data or use default
+	var storageGB float64 = 50.0 // Default estimate
+	
+	if sizeBytes, exists := resource.Extra["sizeBytes"]; exists {
+		if size, ok := sizeBytes.(map[string]interface{}); ok {
+			if value, ok := size["Value"]; ok {
+				if val, ok := value.(float64); ok {
+					storageGB = val / (1024 * 1024 * 1024) // Convert bytes to GB
+				}
+			}
+		}
+	}
+
+	// Calculate storage cost ($0.30/GB/month)
+	storageCost := storageGB * 0.30
+
+	// Add throughput cost based on mode
+	var throughputCost float64
+	switch resource.Class {
+	case "provisioned":
+		throughputCost = 5.0 // Provisioned throughput has additional cost
+	case "bursting":
+		throughputCost = 0.0 // Bursting is included in storage cost
+	default:
+		throughputCost = 2.0 // Conservative estimate for unknown mode
+	}
+
+	totalCost := storageCost + throughputCost
+
+	estimate.Amount = totalCost
+	estimate.Breakdown["storage"] = storageCost
+	estimate.Breakdown["throughput"] = throughputCost
+	estimate.Explanation = fmt.Sprintf("EFS %s: $%.2f/month (%.0fGB storage)", resource.Name, totalCost, storageGB)
+
+	// Add performance mode info
+	if resource.Type == "maxIO" {
+		estimate.Assumptions = append(estimate.Assumptions, "Max I/O performance mode")
+	} else if resource.Type == "generalPurpose" {
+		estimate.Assumptions = append(estimate.Assumptions, "General Purpose performance mode")
 	}
 
 	return estimate

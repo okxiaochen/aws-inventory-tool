@@ -9,6 +9,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials/stscreds"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
+	"github.com/aws/aws-sdk-go-v2/service/efs"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
 )
 
@@ -124,4 +125,11 @@ func (cm *ClientManager) ValidateRegions(ctx context.Context, regions []string) 
 	}
 
 	return validRegions, nil
+}
+
+// GetEFSClient returns an EFS client for the specified region
+func (cm *ClientManager) GetEFSClient(ctx context.Context, region string) (*efs.Client, error) {
+	cfg := cm.GetConfig(region)
+	client := efs.NewFromConfig(cfg)
+	return client, nil
 } 

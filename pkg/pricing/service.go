@@ -189,6 +189,10 @@ func (ps *PricingService) GetServiceConfig(service string) ServiceConfig {
 			ServiceCode:   "AmazonElastiCache",
 			ProductFamily: "Cache Instance",
 		},
+		"efs": {
+			ServiceCode:   "AmazonEFS",
+			ProductFamily: "Storage",
+		},
 	}
 
 	if config, exists := configs[service]; exists {

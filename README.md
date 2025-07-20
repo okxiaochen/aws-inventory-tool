@@ -26,6 +26,7 @@ A Go CLI tool for inventorying active AWS resources across regions with minimal 
 - **CloudWatch alarms** - Monitoring and alerting
 - **ECS clusters and services** - Container orchestration
 - **Redis (ElastiCache)** - In-memory data store clusters
+- **EFS file systems** - Elastic File System storage
 
 ## Installation
 
@@ -72,7 +73,7 @@ make install
 
 | Flag | Description | Default |
 |------|-------------|---------|
-| `--services` | Comma-separated list of services (ec2,rds,lambda,s3,dynamodb,sfn,cloudwatch,ecs,redis) | all |
+| `--services` | Comma-separated list of services (ec2,rds,lambda,s3,dynamodb,sfn,cloudwatch,ecs,redis,efs) | all |
 | `--regions` | Comma-separated list of regions | all enabled |
 | `--output` | Output format (table\|json\|csv\|html) | table |
 | `--parallel` | Number of parallel collectors | 12 |
@@ -285,6 +286,12 @@ The HTML output includes detailed cost estimates with explanations for each serv
 - **Calculation**: Node type × 730 hours/month
 - **Examples**: cache.t3.micro ($12.41), cache.t3.small ($24.82), cache.m5.large ($99.28)
 - **Assumptions**: 24/7 usage, excludes data transfer and backup costs
+
+#### **EFS (Elastic File System)**
+- **Basis**: Storage-based pricing with throughput costs
+- **Calculation**: Storage × $0.30/GB/month + Throughput costs
+- **Examples**: 10GB ($3.00), 100GB ($30.00), 1TB ($300.00)
+- **Assumptions**: Standard storage class, conservative throughput estimate
 
 ### 🆓 **Free Tier Integration**
 
